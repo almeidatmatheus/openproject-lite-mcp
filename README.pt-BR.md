@@ -5,7 +5,7 @@ Servidor [MCP](https://modelcontextprotocol.io) leve para o [OpenProject](https:
 - **Zero dependências.** Node 22.18+ roda o TypeScript direto: sem `npm install`, sem build.
 - **Você roda, você controla.** Fala direto com o seu OpenProject usando a sua chave de API. Nenhum servidor de terceiros no meio.
 - **Econômico em tokens.** Saída tabular, ids numéricos mais `atual` / `ultimo` / `lista`, descrições limpas, nomes resolvidos por aproximação (`status: "in prog"`).
-- **Seguro por padrão.** Apagar sempre mostra uma prévia e espera aprovação; outras escritas também podem pedir.
+- **Seguro por padrão.** Apagar sempre mostra uma prévia e espera aprovação; outras escritas também podem pedir, e ferramentas podem ser removidas para agentes sem supervisão.
 - **Qualquer modelo.** JSON Schema simples (sem arrays de `type`, sem `anyOf`), então modelos locais e outros provedores funcionam.
 
 > English: [README.md](README.md).
@@ -62,19 +62,24 @@ claude mcp add openproject \
 
 | ferramenta | faz                                                                                   |
 |------------|---------------------------------------------------------------------------------------|
-| `ls`       | lista WPs: abertos, meus, atrasados, vencem na semana, sem responsável, fechados, todos; filtros por status, tipo, responsável, versão |
+| `ls`       | lista WPs: abertos, meus, atrasados, vencem na semana, sem responsável, fechados, todos; filtros por status, tipo, responsável, versão, campo personalizado |
 | `find`     | busca por texto (assunto + descrição + comentários, ou só assunto/id)                 |
-| `rd`       | lê um WP: resumo, completo (anexos, relações), atividade, filhos                      |
-| `new`      | cria WP (tipo, status, prioridade, responsável, versão, pai, datas, estimativa)       |
-| `up`       | altera um ou vários WPs (só os campos informados mudam)                               |
+| `rd`       | lê um WP: resumo (com campos personalizados), completo (anexos, relações), atividade, filhos |
+| `new`      | cria WP (tipo, status, prioridade, responsável, versão, pai, datas, estimativa, campos personalizados) |
+| `up`       | altera um ou vários WPs (só os campos informados mudam); `desc_add` acrescenta à descrição |
 | `cm`       | comenta em um WP                                                                      |
+| `rel`      | relações/dependências: listar, criar (bloqueia, precede, requer, relaciona…), remover |
 | `tm`       | horas: listar lançamentos (eu/todos, período) ou lançar horas                         |
 | `rm`       | apaga WPs permanentemente. **Sempre pede confirmação**                                |
-| `cx`       | conta e instância, projetos, status, tipos, prioridades, membros, versões             |
+| `cx`       | conta e instância, projetos, status, tipos, prioridades, membros, versões, campos personalizados |
 
 Ids: `123` ou `#123`, `atual` (último lido/criado/alterado), `ultimo` (1º da última listagem). `alvos` também aceita `12,15,18` ou `lista` = todos da última listagem.
 
 Datas: `2026-12-15`, `15/12`, `hoje`, `amanha`, `+3`, `-1`; `''` limpa.
+
+Campos personalizados: `campos: "Orca ID=task_123; Área=Backend; Revisor=bruno"` no `new`/`up`, `campo: "Orca ID=task_123"` no `ls`. Nomes resolvidos por aproximação; `cx campos` lista os campos.
+
+Relações são lidas a partir do primeiro id: `rel criar id=12 tipo=bloqueia para=15` = #12 bloqueia #15. `precede` aceita `lag` em dias.
 
 **Confirmação.** Se o cliente suporta *elicitation* do MCP, o servidor pergunta direto ao usuário. Senão, a primeira chamada devolve uma prévia e um código `cf`; só a chamada idêntica com esse `cf` executa (vale 10 min, uso único).
 
@@ -85,12 +90,29 @@ Datas: `2026-12-15`, `15/12`, `hoje`, `amanha`, `+3`, `-1`; `''` limpa.
 | `OPENPROJECT_URL`         | obrigatória, ex.: `https://op.empresa.com` (sem `/api/v3`)              |
 | `OPENPROJECT_API_KEY`     | obrigatória                                                             |
 | `OPENPROJECT_PROJECT`     | projeto padrão (identificador, nome ou id); vazio = todos               |
-| `OPENPROJECT_MCP_CONFIRM` | `rm`. Ferramentas que pedem confirmação, separadas por vírgula: ex. `rm,cm,new,up,tm`; `tudo` = toda escrita. `rm` sempre pede |
+| `OPENPROJECT_MCP_CONFIRM` | `rm`. Ferramentas que pedem confirmação, separadas por vírgula: ex. `rm,cm,new,up,rel,tm`; `tudo` = toda escrita. `rm` sempre pede |
+| `OPENPROJECT_MCP_CF`      | `on`. `off` = confirmação só por elicitation (um humano responde no cliente); sem código `cf`, então o agente não aprova sozinho. Cliente sem elicitation recebe erro |
+| `OPENPROJECT_MCP_DISABLE` | vazio. Ferramentas removidas por completo, ex. `rm,tm`; `desc` impede substituir a descrição no `up` (`desc_add` continua funcionando) |
 
 Linha de comando: `node src/main.ts check` (ou `whoami`) testa URL e token.
 
 **Certificado próprio / CA interna:** `NODE_EXTRA_CA_CERTS=/caminho/ca.pem`. Nunca desligue a verificação TLS.
 **Proxy corporativo:** Node 22.21+ com `NODE_USE_ENV_PROXY=1` e `HTTPS_PROXY`.
+
+## Uso com agentes autônomos (Orca e similares)
+
+Quando agentes rodam sem ninguém olhando, uma confirmação que o próprio agente consegue responder não protege nada. Configuração recomendada:
+
+1. **Um usuário do OpenProject dedicado aos agentes**, membro só dos projetos em que eles trabalham, com um papel que **não pode apagar work packages** (e sem admin). Essa é a proteção real: o servidor nunca faz mais do que o usuário do token.
+2. Tire o que os agentes não devem usar e feche a brecha do `cf`:
+   ```
+   OPENPROJECT_MCP_DISABLE=rm,desc
+   OPENPROJECT_MCP_CF=off
+   ```
+   Com `CF=off`, o que estiver em `OPENPROJECT_MCP_CONFIRM` só roda se o cliente perguntar a um humano (elicitation); senão é recusado.
+3. **Progresso vai em comentário** (`cm`), nunca reescrevendo a descrição. Com `DISABLE=desc` o agente só consegue acrescentar (`desc_add`).
+4. **Ligue WPs às tarefas do agente com um campo personalizado.** Crie um campo de texto (ex.: *Orca ID*) no OpenProject, habilite no projeto e nos tipos, e use `new … campos: "Orca ID=task_123"`; para achar de volta, `ls campo: "Orca ID=task_123"`.
+5. **Dependências** com `rel` (`bloqueia`, `precede`, `requer`…), para os agentes verificarem o que está bloqueado antes de começar.
 
 ## Observações sobre o OpenProject
 
@@ -108,7 +130,7 @@ Linha de comando: `node src/main.ts check` (ou `whoami`) testa URL e token.
 ## Desenvolvimento
 
 ```bash
-node test/run.ts                                  # 51 verificações, sem rede nem OpenProject
+node test/run.ts                                  # 74 verificações, sem rede nem OpenProject
 npm i -D typescript @types/node && npx tsc -p .   # checagem de tipos (opcional)
 ```
 

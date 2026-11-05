@@ -5,6 +5,8 @@ import { hfmt } from '../lib.ts';
 import { table, clean, cut, L } from '../fmt.ts';
 import { st, one } from '../ids.ts';
 import { getWp, listWps } from '../wp.ts';
+import { show as showCf } from '../cf.ts';
+import { relTable } from './rel.ts';
 
 export const rd: Tool = {
   name: 'rd',
@@ -38,6 +40,7 @@ export const rd: Tool = {
         gasto: hfmt(w.spentTime), '%': w.percentageDone ?? '',
       }),
       kv({ criado: (w.createdAt ?? '').slice(0, 10), atualizado: (w.updatedAt ?? '').slice(0, 16).replace('T', ' ') }),
+      (await showCf(w)).join(' | '),
     ];
     const desc = clean(w.description?.raw ?? w.description?.html, modo === 'completo' ? 20_000 : 1500);
     lines.push('---', desc || '(sem descrição)');
@@ -50,13 +53,7 @@ export const rd: Tool = {
       const files: J[] = att?._embedded?.elements ?? [];
       if (files.length) lines.push('---', 'anexos:', table(['nome', 'kb', 'tipo'], files.map(f => [f.fileName, Math.ceil((f.fileSize ?? 0) / 1024), f.contentType])));
       const rels: J[] = rel?._embedded?.elements ?? [];
-      if (rels.length) {
-        lines.push('---', 'relações:', table(['tipo', 'de', 'para'], rels.map(r => [
-          r.type ?? r.name,
-          `#${idOf(r._links?.from?.href)} ${cut(L(r, 'from'), 40)}`,
-          `#${idOf(r._links?.to?.href)} ${cut(L(r, 'to'), 40)}`,
-        ])));
-      }
+      if (rels.length) lines.push('---', 'relações:', relTable(id, rels));
     }
     return lines.filter(Boolean).join('\n');
   },

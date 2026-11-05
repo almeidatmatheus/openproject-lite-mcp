@@ -9,6 +9,8 @@ import { up } from './up.ts';
 import { cm } from './cm.ts';
 import { rm } from './rm.ts';
 import { tm } from './tm.ts';
+import { rel } from './rel.ts';
+import { cfg } from '../lib.ts';
 
 export type Tool = {
   name: string;
@@ -20,4 +22,7 @@ export type Tool = {
   run: (a: any) => Promise<string>;
 };
 
-export const tools: Tool[] = [ls, find, rd, nw, up, cm, tm, rm, cx];
+const ALL: Tool[] = [ls, find, rd, nw, up, cm, rel, tm, rm, cx];
+
+// OPENPROJECT_MCP_DISABLE=rm,tm hides tools entirely (they can't be called)
+export const tools: Tool[] = ALL.filter(t => !cfg().disable.has(t.name));

@@ -4,6 +4,7 @@ import { href, idOf, type J } from '../op.ts';
 import { ymd, addDays, fail } from '../lib.ts';
 import { project, status, typeOf, version, user, isMe, isNobody } from '../ref.ts';
 import { listWps } from '../wp.ts';
+import { filter as cfFilter } from '../cf.ts';
 
 export const ls: Tool = {
   name: 'ls',
@@ -21,6 +22,7 @@ export const ls: Tool = {
       tipo: { type: 'string', description: 'só este tipo' },
       resp: { type: 'string', description: "só deste responsável: nome, 'eu' ou 'ninguem'" },
       versao: { type: 'string', description: 'só desta versão (exige projeto)' },
+      campo: { type: 'string', description: "campo personalizado: 'Nome=valor' (texto: contém; listas e pessoas: igual; 'Nome=' = vazio). Exige projeto. Ex.: 'Orca ID=task_123'" },
       ordem: { type: 'string', enum: ['atualizado', 'fim', 'prioridade', 'criado', 'id'], description: 'padrão: atualizado' },
       n: S.n,
       pag: S.pag,
@@ -48,6 +50,10 @@ export const ls: Tool = {
     if (a.versao) {
       if (!pj) fail('filtrar por versão exige o projeto (pj)');
       f.push({ version: { operator: '=', values: [String((await version(a.versao, pj.id)).id)] } });
+    }
+    if (a.campo) {
+      if (!pj) fail('filtrar por campo exige o projeto (pj)');
+      f.push(...(await cfFilter(a.campo, pj.id)));
     }
     return listWps({ pj, filters: f, sort: a.ordem ?? (fl === 'atrasados' || fl === 'semana' ? 'fim' : 'atualizado'), n: a.n, pag: a.pag });
   },

@@ -3,15 +3,16 @@ import { S } from './s.ts';
 import { op } from '../op.ts';
 import { cfg } from '../lib.ts';
 import { table } from '../fmt.ts';
+import { projectFields } from '../cf.ts';
 import { me, projects, project, needProject, statuses, types, priorities, members, versions } from '../ref.ts';
 
 export const cx: Tool = {
   name: 'cx',
-  description: 'Contexto: conta e instância, projetos, status, tipos, prioridades, membros (pessoas atribuíveis) e versões de um projeto.',
+  description: 'Contexto: conta e instância, projetos, status, tipos, prioridades, membros (pessoas atribuíveis), versões e campos personalizados de um projeto.',
   inputSchema: {
     type: 'object',
     properties: {
-      acao: { type: 'string', enum: ['conta', 'projetos', 'status', 'tipos', 'prioridades', 'membros', 'versoes'], description: 'padrão: conta' },
+      acao: { type: 'string', enum: ['conta', 'projetos', 'status', 'tipos', 'prioridades', 'membros', 'versoes', 'campos'], description: 'padrão: conta. campos = campos personalizados do projeto' },
       pj: S.pj,
     },
   },
@@ -41,6 +42,12 @@ export const cx: Tool = {
       case 'membros': {
         const p = await needProject(a.pj);
         return table(['id', 'nome'], (await members(p.id)).map(u => [u.id, u.name]));
+      }
+      case 'campos': {
+        const p = await needProject(a.pj);
+        const fs = await projectFields(p.id);
+        if (!fs.length) return 'nenhum campo personalizado neste projeto';
+        return table(['campo', 'nome', 'tipo'], fs.map(f => [f.key, f.name, (f.multi ? '[]' : '') + f.type]));
       }
       case 'versoes': {
         const p = await needProject(a.pj);

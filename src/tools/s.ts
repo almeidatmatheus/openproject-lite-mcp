@@ -13,7 +13,9 @@ const DATE = "AAAA-MM-DD, DD/MM, hoje, amanha, +3, -1; '' limpa";
 
 export const FIELDS = {
   assunto: { type: 'string', description: 'título' },
-  desc: { type: 'string', description: 'descrição em markdown (substitui a atual)' },
+  desc: { type: 'string', description: 'descrição em markdown. SUBSTITUI a descrição inteira; para registrar progresso use cm, para acrescentar use desc_add' },
+  desc_add: { type: 'string', description: 'texto acrescentado ao fim da descrição atual (sem apagar nada)' },
+  campos: { type: 'string', description: "campos personalizados: 'Nome=valor; Outro=valor' ('' após = limpa; listas múltiplas: a,b). Veja cx campos" },
   tipo: { type: 'string', description: 'nome do tipo (Task, Bug, Milestone...)' },
   status: { type: 'string', description: 'nome do status' },
   prio: { type: 'string', description: 'nome da prioridade' },

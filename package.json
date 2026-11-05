@@ -1,7 +1,7 @@
 {
   "name": "openproject-lite-mcp",
-  "version": "0.1.0",
-  "description": "Lightweight MCP server for OpenProject (API v3): work packages, comments, time tracking. Zero dependencies.",
+  "version": "0.2.0",
+  "description": "Lightweight MCP server for OpenProject (API v3): work packages, relations, custom fields, comments, time tracking. Zero dependencies.",
   "type": "module",
   "license": "MIT",
   "bin": { "openproject-lite-mcp": "src/main.ts" },

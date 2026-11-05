@@ -5,12 +5,12 @@ import { L, cut } from '../fmt.ts';
 import { st, targets } from '../ids.ts';
 import { getWp, patchFrom, changes, titles, requireSome } from '../wp.ts';
 
-const { assunto, desc, tipo, status, prio, resp, versao, pai, inicio, fim, estimativa } = FIELDS;
-const KEYS = ['assunto', 'desc', 'tipo', 'status', 'prio', 'resp', 'versao', 'pai', 'inicio', 'fim', 'estimativa', 'pct'];
+const { assunto, desc, desc_add, campos, tipo, status, prio, resp, versao, pai, inicio, fim, estimativa } = FIELDS;
+const KEYS = ['assunto', 'desc', 'desc_add', 'campos', 'tipo', 'status', 'prio', 'resp', 'versao', 'pai', 'inicio', 'fim', 'estimativa', 'pct'];
 
 export const up: Tool = {
   name: 'up',
-  description: 'Altera campos de um ou vários work packages (status, responsável, prazo, prioridade, %...). Só os campos informados mudam.',
+  description: 'Altera campos de um ou vários work packages (status, responsável, prazo, prioridade, %, campos personalizados...). Só os campos informados mudam. Para registrar progresso, prefira cm (comentário) a mexer na descrição.',
   write: true,
   inputSchema: {
     type: 'object',
@@ -18,7 +18,7 @@ export const up: Tool = {
       alvos: S.alvos,
       status, resp, prio, fim, inicio,
       pct: { type: 'integer', minimum: 0, maximum: 100, description: '% concluído (se o projeto usar progresso manual)' },
-      assunto, desc, tipo, versao, pai, estimativa,
+      campos, desc_add, assunto, desc, tipo, versao, pai, estimativa,
       notificar: { type: 'boolean', description: 'enviar notificações (padrão true)' },
       cf: S.cf,
     },

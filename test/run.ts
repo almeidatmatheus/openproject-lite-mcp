@@ -54,7 +54,7 @@ const ini = await c.init();
 check('initialize', ini.result.serverInfo.name === 'openproject-lite-mcp' && ini.result.protocolVersion === '2025-06-18');
 const tl = await c.rpc('tools/list');
 const names = tl.result.tools.map((t: any) => t.name).sort().join(',');
-check('tools/list: 9 ferramentas', names === 'cm,cx,find,ls,new,rd,rm,tm,up', names);
+check('tools/list: 10 ferramentas', names === 'cm,cx,find,ls,new,rd,rel,rm,tm,up', names);
 check('schemas sem type arrays', !JSON.stringify(tl.result.tools).includes('"type":['));
 check('rm marcado destrutivo', tl.result.tools.find((t: any) => t.name === 'rm').annotations.destructiveHint === true);
 
@@ -142,6 +142,48 @@ check('tm listar por WP', /^1 lançamentos · 2h/.test(r.text), r.text);
 r = await c.call('tm', { acao: 'lancar', id: 1, horas: 1, atividade: 'xyz' });
 check('tm atividade inválida', r.err && /atividade "xyz" não encontrado. Opções: Development, Management/.test(r.text), r.text);
 
+// custom fields
+r = await c.call('cx', { acao: 'campos' });
+check('cx campos', /customField1\|Orca ID\|String/.test(r.text) && /customField2\|Área\|CustomOption/.test(r.text), r.text);
+r = await c.call('rd', { id: 2 });
+check('rd mostra campos personalizados', /Orca ID: task_abc \| Área: Backend/.test(r.text), r.text);
+r = await c.call('ls', { campo: 'orca id=task_abc' });
+check('ls filtra por campo texto', r.text.startsWith('1 itens') && /Configurar CI/.test(r.text), r.text);
+r = await c.call('ls', { campo: 'Área=front' });
+check('ls filtra por opção (nenhum)', r.text === 'nenhum work package', r.text);
+r = await c.call('new', { assunto: 'Card do Orca', campos: 'Orca ID=task_xyz; Área=frontend; Revisor=bruno; Pontos=5' });
+const card = db.wps.at(-1)!;
+check('new com campos', /^criado #\d+ "Card do Orca"/.test(r.text) && card.cf.customField1 === 'task_xyz' && card.cf.customField2 === 11 && card.cf.customField3 === 2 && card.cf.customField4 === 5, card.cf);
+r = await c.call('up', { campos: 'Pontos=8; Área=' });
+check('up campos e limpar opção', card.cf.customField4 === 8 && card.cf.customField2 === null, card.cf);
+r = await c.call('up', { campos: 'Pontos=muito' });
+check('up campo inteiro inválido', r.err && /Pontos deve ser inteiro/.test(r.text), r.text);
+r = await c.call('up', { campos: 'Cor=azul' });
+check('up campo inexistente lista opções', r.err && /campo "Cor" não encontrado. Opções: Orca ID, Área, Revisor, Pontos/.test(r.text), r.text);
+r = await c.call('ls', { pj: 'todos', campo: 'Orca ID=x' });
+check('campo sem projeto', r.err && /exige o projeto/.test(r.text), r.text);
+
+// description: append vs replace
+card.desc = 'Objetivo original';
+r = await c.call('up', { desc_add: '- 05/11: API pronta' });
+check('up desc_add acrescenta', card.desc === 'Objetivo original\n\n- 05/11: API pronta', card.desc);
+
+// relations
+r = await c.call('rel', { id: 3 });
+check('rel listar do ponto de vista do id', /^1 relações de #3/.test(r.text) && /1\|bloqueado_por\|#2 Configurar CI/.test(r.text), r.text);
+r = await c.call('rel', { acao: 'criar', id: 2, tipo: 'precede', para: card.id, lag: 2 });
+check('rel criar precede com lag', /^relação 2 criada: #2 precede #/.test(r.text) && db.rels.at(-1)!.type === 'precedes' && db.rels.at(-1)!.lag === 2, r.text);
+r = await c.call('rel', { id: card.id });
+check('rel listar lado inverso', /segue\|#2 Configurar CI\|2/.test(r.text), r.text);
+r = await c.call('rd', { id: 2, modo: 'completo' });
+check('rd completo mostra relações', /bloqueia\|#3 Bug no checkout/.test(r.text) && /precede\|#\d+ Card do Orca/.test(r.text), r.text);
+r = await c.call('rel', { acao: 'criar', id: 2, tipo: 'bloqueia', para: 3 });
+check('rel duplicada repassa erro', r.err && /Relation already exists/.test(r.text), r.text);
+r = await c.call('rel', { acao: 'remover', id: card.id, para: 2 });
+check('rel remover por para', r.text === 'relação 2 removida' && db.rels.length === 1, r.text);
+r = await c.call('rel', { acao: 'criar', id: 2, tipo: 'cancela', para: 3 });
+check('rel tipo inválido', r.err && /tipo deve ser um de/.test(r.text), r.text);
+
 const before = db.wps.length;
 r = await c.call('rm', { alvos: '7' });
 const cf = /cf="([0-9a-f]+)"/.exec(r.text)?.[1];
@@ -179,6 +221,24 @@ check('OPENPROJECT_MCP_CONFIRM=cm pede prévia', /^PRÉVIA/.test(r.text) && /com
 r = await k.call('tm');
 check('tm listar não pede confirmação', /lançamentos/.test(r.text), r.text);
 k.close();
+
+// --- autonomous agent setup: rm hidden, no cf codes, description can't be replaced
+const g = client({ ...ENV, OPENPROJECT_MCP_DISABLE: 'rm,desc', OPENPROJECT_MCP_CONFIRM: 'up', OPENPROJECT_MCP_CF: 'off' });
+await g.init();
+const gl = (await g.rpc('tools/list')).result.tools;
+check('DISABLE esconde rm', !gl.some((t: any) => t.name === 'rm') && gl.length === 9, gl.map((t: any) => t.name));
+check('CF=off tira cf dos schemas', !JSON.stringify(gl).includes('"cf"'));
+r = await g.call('rm', { alvos: '2' });
+check('rm desativado não executa', r.err && /ferramenta desconhecida/.test(r.text) && db.wps.some(w => w.id === 2), r.text);
+r = await g.call('up', { alvos: '2', status: 'closed' });
+check('CF=off sem elicitation recusa', r.err && /exige confirmação humana/.test(r.text) && db.wps.find(w => w.id === 2)!.status === 1, r.text);
+const h = client({ ...ENV, OPENPROJECT_MCP_DISABLE: 'desc' });
+await h.init();
+r = await h.call('up', { alvos: '2', desc: 'apagou tudo' });
+check('DISABLE=desc bloqueia substituir descrição', r.err && /desc_add/.test(r.text), r.text);
+r = await h.call('up', { alvos: '2', desc_add: 'progresso' });
+check('DISABLE=desc ainda permite desc_add', /^#2 ok/.test(r.text) && db.wps.find(w => w.id === 2)!.desc === 'progresso', r.text);
+g.close(); h.close();
 
 // --- bad key / no config
 const b = client({ ...ENV, OPENPROJECT_API_KEY: 'wrong' });

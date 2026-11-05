@@ -6,9 +6,15 @@ export function cfg() {
     url: (e.OPENPROJECT_URL ?? '').trim().replace(/\/+$/, ''),
     key: (e.OPENPROJECT_API_KEY ?? '').trim(),
     project: (e.OPENPROJECT_PROJECT ?? '').trim(),
-    confirm: new Set((e.OPENPROJECT_MCP_CONFIRM ?? 'rm').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)),
+    confirm: set(e.OPENPROJECT_MCP_CONFIRM ?? 'rm'),
+    // tool names to hide, plus 'desc' = up can't replace a description
+    disable: set(e.OPENPROJECT_MCP_DISABLE ?? ''),
+    // off = confirmation only via elicitation (a human); no cf code an agent could replay
+    cfCodes: !['off', '0', 'false', 'nao'].includes((e.OPENPROJECT_MCP_CF ?? 'on').trim().toLowerCase()),
   };
 }
+
+const set = (s: string) => new Set(s.split(',').map(x => x.trim().toLowerCase()).filter(Boolean));
 
 // error shown to the model as-is (no stack)
 export class UserErr extends Error {}

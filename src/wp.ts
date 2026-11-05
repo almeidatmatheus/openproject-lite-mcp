@@ -1,7 +1,8 @@
 // work package helpers shared by tools: listing, field patch building, short previews
 
 import { op, qs, href, idOf, type J } from './op.ts';
-import { day, iso, norm, fail } from './lib.ts';
+import { day, iso, norm, fail, cfg } from './lib.ts';
+import { apply as applyCf } from './cf.ts';
 import { table, cut, L, WP_COLS, wpRow } from './fmt.ts';
 import { st, one } from './ids.ts';
 import { status, priority, typeOf, types, version, user } from './ref.ts';
@@ -38,20 +39,30 @@ export async function patchFrom(a: J, pid: number, cur?: J): Promise<J> {
   const b: J = {};
   const ln: J = {};
   if (a.assunto !== undefined) b.subject = a.assunto;
-  if (a.desc !== undefined) b.description = { format: 'markdown', raw: a.desc };
+  if (a.desc !== undefined) {
+    if (cur && cfg().disable.has('desc')) fail('substituir a descrição está desativado (OPENPROJECT_MCP_DISABLE=desc); use desc_add para acrescentar ou cm para comentar');
+    b.description = { format: 'markdown', raw: a.desc };
+  }
+  if (a.desc_add !== undefined) {
+    const base = a.desc ?? cur?.description?.raw ?? '';
+    b.description = { format: 'markdown', raw: base.trimEnd() ? `${base.trimEnd()}\n\n${a.desc_add}` : a.desc_add };
+  }
 
   let milestone = false;
+  let tid = 0;
   if (a.tipo !== undefined) {
     const t = await typeOf(a.tipo, pid);
     ln.type = { href: href(t) };
     milestone = !!t.isMilestone;
+    tid = t.id;
   } else if (cur) {
-    const t = (await types(pid)).find(x => x.id === idOf(cur._links?.type?.href));
+    tid = idOf(cur._links?.type?.href);
+    const t = (await types(pid)).find(x => x.id === tid);
     milestone = !!t?.isMilestone;
   } else {
     const ts = await types(pid);
     const t = ts.find(x => x.isDefault) ?? ts[0];
-    if (t) { ln.type = { href: href(t) }; milestone = !!t.isMilestone; }
+    if (t) { ln.type = { href: href(t) }; milestone = !!t.isMilestone; tid = t.id; }
   }
 
   if (a.status !== undefined) ln.status = { href: href(await status(a.status)) };
@@ -70,6 +81,10 @@ export async function patchFrom(a: J, pid: number, cur?: J): Promise<J> {
   if (a.estimativa !== undefined) b.estimatedTime = a.estimativa === 0 ? null : iso(a.estimativa);
   if (a.pct !== undefined) b.percentageDone = a.pct;
   if (Object.keys(ln).length) b._links = ln;
+  if (a.campos !== undefined) {
+    if (!tid) fail('não consegui determinar o tipo para os campos personalizados; informe tipo');
+    await applyCf(b, a.campos, pid, tid);
+  }
   return b;
 }
 
@@ -77,7 +92,9 @@ export async function patchFrom(a: J, pid: number, cur?: J): Promise<J> {
 export function changes(a: J): string {
   const names: Record<string, string> = { assunto: 'assunto', tipo: 'tipo', status: 'status', prio: 'prio', resp: 'resp', versao: 'versão', pai: 'pai', inicio: 'início', fim: 'fim', estimativa: 'estimativa(h)', pct: '%' };
   const parts = Object.entries(names).filter(([k]) => a[k] !== undefined).map(([k, n]) => `${n}=${a[k] === '' ? '(limpar)' : a[k]}`);
-  if (a.desc !== undefined) parts.push(`descrição (${String(a.desc).length} caracteres)`);
+  if (a.desc !== undefined) parts.push(`descrição SUBSTITUÍDA (${String(a.desc).length} caracteres)`);
+  if (a.desc_add !== undefined) parts.push(`acrescentar à descrição: ${cut(String(a.desc_add), 200)}`);
+  if (a.campos !== undefined) parts.push(`campos: ${a.campos}`);
   return parts.join(', ');
 }
 
