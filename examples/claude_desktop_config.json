@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "openproject": {
+      "command": "node",
+      "args": ["/absolute/path/to/openproject-lite-mcp/src/main.ts"],
+      "env": {
+        "OPENPROJECT_URL": "https://op.example.com",
+        "OPENPROJECT_API_KEY": "<your api token>",
+        "OPENPROJECT_PROJECT": "my-project",
+        "OPENPROJECT_MCP_CONFIRM": "rm"
+      }
+    }
+  }
+}
